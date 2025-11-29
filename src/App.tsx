@@ -5,8 +5,8 @@ import { Card } from "./components/ui/card";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { StudyMaterial } from "./components/StudyMaterial";
 import ReciteStudy from "./components/ReciteStudy";
-import { PracticeTesting } from "./components/PracticeTesting";
-import { BookOpen, Brain, Plus, Trash2, X } from "lucide-react";
+import { QuizStudy } from "./components/QuizStudy";
+import { BookOpen, Plus, Trash2, X, ClipboardList } from "lucide-react";
 
 interface Material {
   id: string;
@@ -20,7 +20,7 @@ interface Material {
 interface Chat {
   id: string;
   title: string;
-  type: "study" | "practice";
+  type: "study" | "quiz";
   createdAt: string;
   materials: Material[];
 }
@@ -32,7 +32,7 @@ export default function App() {
   const [materialAdded, setMaterialAdded] = useState(false);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [newChatTitle, setNewChatTitle] = useState("");
-  const [newChatType, setNewChatType] = useState<"study" | "practice">("study");
+  const [newChatType, setNewChatType] = useState<"study" | "quiz">("study");
   const [loading, setLoading] = useState(true);
 
   const currentChat = chats.find((c) => c.id === currentChatId);
@@ -67,7 +67,7 @@ export default function App() {
     loadChats();
   }, []);
 
-  const handleCreateChat = (type: "study" | "practice") => {
+  const handleCreateChat = (type: "study" | "quiz") => {
     setNewChatType(type);
     setNewChatTitle("");
     setShowNewChatDialog(true);
@@ -376,13 +376,13 @@ export default function App() {
               Estudio
             </Button>
             <Button
-              onClick={() => handleCreateChat("practice")}
+              onClick={() => handleCreateChat("quiz")}
               size="sm"
               className="w-full justify-start"
               variant="outline"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Práctica
+              Examen
             </Button>
           </div>
 
@@ -407,7 +407,7 @@ export default function App() {
                     {chat.type === "study" ? (
                       <BookOpen className="h-4 w-4 text-blue-500 flex-shrink-0" />
                     ) : (
-                      <Brain className="h-4 w-4 text-purple-500 flex-shrink-0" />
+                      <ClipboardList className="h-4 w-4 text-green-500 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm truncate font-medium">{chat.title}</p>
@@ -436,21 +436,21 @@ export default function App() {
             // Pantalla vacía
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="mb-4 inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100">
-                  <BookOpen className="w-6 h-6 text-blue-600" />
+                <div className="mb-4 inline-flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500">
+                  <BookOpen className="w-6 h-6 text-white" />
                 </div>
                 <h1 className="text-2xl font-semibold mb-2">Bienvenido a StudyAI</h1>
                 <p className="text-muted-foreground mb-6">
                   Selecciona o crea un chat para empezar
                 </p>
             <div className="space-y-4 w-full max-w-sm">
-                  <Button onClick={() => handleCreateChat("study")} className="h-16 w-full text-lg font-semibold">
+                  <Button onClick={() => handleCreateChat("study")} className="h-16 w-full text-lg font-semibold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
                     <BookOpen className="mr-3 h-6 w-6" />
                     Nuevo Estudio
                   </Button>
-                  <Button onClick={() => handleCreateChat("practice")} variant="outline" className="h-16 w-full text-lg font-semibold">
-                    <Brain className="mr-3 h-6 w-6" />
-                    Nueva Práctica
+                  <Button onClick={() => handleCreateChat("quiz")} variant="outline" className="h-16 w-full text-lg font-semibold border-2 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50">
+                    <ClipboardList className="mr-3 h-6 w-6" />
+                    Nuevo Examen
                   </Button>
                 </div>
               </div>
@@ -464,14 +464,14 @@ export default function App() {
                   {currentChat?.type === "study" ? (
                     <BookOpen className="h-5 w-5 text-blue-500" />
                   ) : (
-                    <Brain className="h-5 w-5 text-purple-500" />
+                    <ClipboardList className="h-5 w-5 text-purple-500" />
                   )}
                   <div>
                     <h2 className="font-semibold">{currentChat?.title}</h2>
                     <p className="text-sm text-muted-foreground">
                       {currentChat?.type === "study"
                         ? "Modo Estudio"
-                        : "Modo Práctica"}
+                        : "Modo Examen"}
                     </p>
                   </div>
                 </div>
@@ -533,13 +533,13 @@ export default function App() {
                       )}
                     </>
                   ) : (
-                    // Práctica: Generar preguntas
+                    // Examen: Test, Redactar o Mixto
                     <>
                       {!materialAdded ? (
                         <div className="max-w-2xl mx-auto">
                           <Card className="p-6 text-center">
                             <p className="text-muted-foreground mb-4">
-                              Carga material primero para practicar
+                              Carga material primero para generar el examen
                             </p>
                             <StudyMaterial 
                               onMaterialSubmit={handleMaterialSubmit}
@@ -548,7 +548,7 @@ export default function App() {
                           </Card>
                         </div>
                       ) : (
-                        <PracticeTesting material={currentMaterial} />
+                        <QuizStudy material={currentMaterial} />
                       )}
                     </>
                   )}
@@ -566,7 +566,7 @@ export default function App() {
             {/* Header */}
             <div className="border-b p-8 flex items-center justify-between">
               <h2 className="text-lg font-semibold">
-                Nuevo Chat de {newChatType === "study" ? "Estudio" : "Práctica"}
+                Nuevo Chat de {newChatType === "study" ? "Estudio" : "Examen"}
               </h2>
               <button
                 onClick={() => setShowNewChatDialog(false)}

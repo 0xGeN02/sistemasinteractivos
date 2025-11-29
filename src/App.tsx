@@ -444,7 +444,7 @@ export default function App() {
                   Selecciona o crea un chat para empezar
                 </p>
             <div className="space-y-4 w-full max-w-sm">
-                  <Button onClick={() => handleCreateChat("study")} className="h-16 w-full text-lg font-semibold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
+                  <Button onClick={() => handleCreateChat("study")} variant="outline" className="h-16 w-full text-lg font-semibold bg-gradient-to-r from-blue-500 to-blue-600 from-blue-600 hover:to-blue-700">
                     <BookOpen className="mr-3 h-6 w-6" />
                     Nuevo Estudio
                   </Button>

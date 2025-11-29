@@ -92,6 +92,9 @@ Ver más detalles en [OLLAMA_SETUP.md](./OLLAMA_SETUP.md)
 - 🎙️ **Reconocimiento de voz** - Habla y transcribe en tiempo real con Web Speech API
 - 🤖 **Evaluación con IA** - Ollama analiza tu explicación
 - 📊 **Feedback detallado** - Precisión, conceptos faltantes y errores
+- ⏱️ **Cronómetro integrado** - Control de tiempo durante presentaciones
+- 📹 **Análisis de video** - Evalúa lenguaje corporal, confianza y nerviosismo
+- 💡 **Sugerencias personalizadas** - Mejora tu postura, expresión y contacto visual
 - ⚡ **Sin configuración extra** - Todo integrado en el navegador
 - 💾 **Base de datos** - Historial de chats y materiales persistentes
 - 📄 **Soporte PDF** - Carga y estudia desde PDFs
@@ -105,10 +108,25 @@ Ver más detalles en [OLLAMA_SETUP.md](./OLLAMA_SETUP.md)
 
 ## 📖 Cómo Usar
 
+### Modo Básico
 1. **Crear un chat** de estudio o práctica
 2. **Agregar material** (texto o PDF)
 3. **Hablar y explicar** - El navegador transcribe en tiempo real
 4. **Recibir feedback** instantáneo de Ollama con análisis detallado
+
+### Modo Avanzado con Video (Nuevo! 🎥)
+1. **Activar la cámara** antes de comenzar (opcional)
+2. **Iniciar presentación** - El cronómetro comenzará automáticamente
+3. **Presentar tu temario** mientras el sistema graba y analiza
+4. **Recibir análisis completo**:
+   - Precisión del contenido
+   - Duración de la presentación
+   - Nivel de confianza (1-10)
+   - Nivel de nerviosismo (1-10)
+   - Análisis de postura y contacto visual
+   - Sugerencias personalizadas para mejorar
+
+Ver más detalles en [PRESENTATION_ANALYSIS.md](./PRESENTATION_ANALYSIS.md)
 
 ## 🔧 Scripts Útiles
 
@@ -122,14 +140,38 @@ npm run dev
 # Solo backend
 npm run server
 
-# Verificar Ollama
+# Verificar Ollama y modelos
 bash scripts/check-ollama.sh
+
+# Verificar sistema de análisis de presentaciones
+bash scripts/check-presentation-setup.sh
 
 # Base de datos
 docker-compose up -d       # Iniciar
 docker-compose down        # Detener
 docker-compose logs -f     # Ver logs
 ```
+
+## 📹 Análisis de Video
+
+Para usar el análisis de video con lenguaje corporal:
+
+1. **Instalar modelo de visión:**
+   ```bash
+   ollama pull llava
+   ```
+
+2. **Configurar en .env:**
+   ```env
+   VISION_MODEL=llava
+   ```
+
+3. **Usar en la aplicación:**
+   - Activa la cámara antes de grabar
+   - El sistema analizará tu lenguaje corporal automáticamente
+   - Recibirás feedback sobre confianza, nerviosismo, postura y más
+
+**Nota:** El análisis de video es opcional. Puedes usar la aplicación sin cámara.
 
 ## 📝 Solución de Problemas
 

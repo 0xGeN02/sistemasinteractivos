@@ -134,40 +134,41 @@ ollama serve &
 - Usa un modelo más pequeño como `llama3.2:3b` o `phi3:mini`
 - Verifica que no estés usando CPU en lugar de GPU
 
-## 📝 Transcripción de Audio (Whisper)
+## 🎙️ Transcripción de Audio
 
-Para transcripción de audio, tienes dos opciones:
+El proyecto usa **Web Speech API** integrada en el navegador:
 
-### Opción 1: Whisper Local con Ollama
-```bash
-# Ollama no tiene Whisper nativamente aún, pero puedes usar:
-# - whisper.cpp
-# - faster-whisper
-```
+- ✅ **Gratis** - Sin costo
+- ✅ **Sin configuración** - Ya incluida en Chrome/Edge
+- ✅ **Tiempo real** - Transcripción mientras hablas
+- ✅ **Español** - Configurado para español (es-ES)
 
-### Opción 2: Sin transcripción (modo desarrollo)
-El proyecto usa transcripción simulada si no configuras nada. Para desarrollo está bien.
+**Navegadores compatibles:**
+- ✅ Chrome
+- ✅ Edge
+- ✅ Safari (con webkit)
+- ⚠️ Firefox (soporte limitado)
 
-### Opción 3: Whisper API de OpenAI (si decides usarla después)
-```env
-OPENAI_API_KEY=sk-...
-```
+No necesitas instalar nada adicional.
 
 ## ✅ Estado Actual del Proyecto
 
 - ✅ Ollama configurado para evaluación de recitaciones
 - ✅ Modelo por defecto: `llama3.1`
-- ⏸️ Transcripción en modo simulado (funcional para pruebas)
+- ✅ Transcripción con Web Speech API (integrada en navegador)
 - ✅ Todo funciona localmente sin APIs externas
+- ✅ Cero configuración adicional necesaria
 
 ## 🔄 Próximos Pasos Recomendados
 
 1. **Instalar modelo recomendado:**
+
    ```bash
    ollama pull llama3.1
    ```
 
 2. **Verificar que Ollama está corriendo:**
+
    ```bash
    ollama list
    ```
@@ -175,7 +176,8 @@ OPENAI_API_KEY=sk-...
 3. **Probar el sistema:**
    - Crear un chat de estudio
    - Agregar material
-   - Grabar audio explicando el material
-   - Ver el feedback de Ollama
+   - Click en "Empezar a hablar"
+   - Explicar el material en voz alta
+   - Ver el feedback de Ollama en tiempo real
 
-4. **(Opcional) Configurar Whisper local** para transcripción real de audio
+4. **¡Listo!** No necesitas configurar nada más

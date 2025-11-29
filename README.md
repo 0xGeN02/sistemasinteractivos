@@ -89,9 +89,10 @@ Ver más detalles en [OLLAMA_SETUP.md](./OLLAMA_SETUP.md)
 ## 🎯 Características
 
 - ✅ **100% Local** - Sin APIs externas, todo en tu máquina
-- 🎙️ **Grabación de audio** - Explica el temario con tu voz
+- 🎙️ **Reconocimiento de voz** - Habla y transcribe en tiempo real con Web Speech API
 - 🤖 **Evaluación con IA** - Ollama analiza tu explicación
 - 📊 **Feedback detallado** - Precisión, conceptos faltantes y errores
+- ⚡ **Sin configuración extra** - Todo integrado en el navegador
 - 💾 **Base de datos** - Historial de chats y materiales persistentes
 - 📄 **Soporte PDF** - Carga y estudia desde PDFs
 
@@ -106,8 +107,8 @@ Ver más detalles en [OLLAMA_SETUP.md](./OLLAMA_SETUP.md)
 
 1. **Crear un chat** de estudio o práctica
 2. **Agregar material** (texto o PDF)
-3. **Grabar tu explicación** del temario
-4. **Recibir feedback** instantáneo de la IA
+3. **Hablar y explicar** - El navegador transcribe en tiempo real
+4. **Recibir feedback** instantáneo de Ollama con análisis detallado
 
 ## 🔧 Scripts Útiles
 

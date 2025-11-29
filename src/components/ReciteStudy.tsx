@@ -2,6 +2,14 @@ import { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
+// Declarar tipo para Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
 export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string }) {
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -9,73 +17,114 @@ export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<'es-ES' | 'en-US' | 'mixed'>('mixed');
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
+  const recognitionRef = useRef<any>(null);
 
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
+    try {
+      // Verificar si el navegador soporta Web Speech API
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        setError("Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.");
+        return;
+      }
 
-    mediaRecorderRef.current = mediaRecorder;
-    chunks.current = [];
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
 
-    mediaRecorder.ondataavailable = (e) => chunks.current.push(e.data);
+      // Configuración del idioma
+      const lang = language === 'mixed' ? 'es-ES' : language;
+      recognition.lang = lang;
+      recognition.continuous = true; // Escuchar continuamente
+      recognition.interimResults = true; // Resultados parciales en tiempo real
+      recognition.maxAlternatives = 3; // Obtener alternativas para mejorar términos técnicos
+      
+      console.log(`Reconocimiento iniciado en idioma: ${lang}${language === 'mixed' ? ' (modo mixto)' : ''}`);
 
-    mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(chunks.current, { type: "audio/webm" });
-      await sendAudioToWhisper(audioBlob);
-    };
+      let finalTranscript = '';
 
-    mediaRecorder.start();
-    setRecording(true);
+      recognition.onstart = () => {
+        setRecording(true);
+        setError(null);
+        setTranscript('');
+        console.log('Reconocimiento de voz iniciado');
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcriptPiece = event.results[i][0].transcript;
+          
+          if (event.results[i].isFinal) {
+            finalTranscript += transcriptPiece + ' ';
+          } else {
+            interimTranscript += transcriptPiece;
+          }
+        }
+        
+        // Mostrar transcripción en tiempo real
+        setTranscript(finalTranscript + interimTranscript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Error en reconocimiento de voz:', event.error);
+        setError(`Error: ${event.error}`);
+        setRecording(false);
+      };
+
+      recognition.onend = async () => {
+        setRecording(false);
+        console.log('Reconocimiento de voz finalizado');
+        
+        // Si hay transcripción, enviar a evaluar
+        if (finalTranscript.trim()) {
+          await evaluateWithOllama(finalTranscript.trim());
+        }
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error('Error iniciando reconocimiento:', err);
+      setError('Error al iniciar el reconocimiento de voz');
+    }
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setRecording(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
-  const sendAudioToWhisper = async (audioBlob: Blob) => {
+  const evaluateWithOllama = async (text: string) => {
     setIsProcessing(true);
     setError(null);
     
     try {
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "recording.webm");
-      
-      // Enviar el material esperado para comparación inmediata
-      if (expectedAnswer) {
-        formData.append("expectedText", expectedAnswer);
-      }
-
-      const resp = await fetch("http://localhost:3001/whisper", {
+      const resp = await fetch("http://localhost:3001/api/recite/evaluate", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recitedText: text,
+          expectedText: expectedAnswer,
+        }),
       });
 
       if (!resp.ok) {
-        throw new Error(`Error sending audio: ${resp.statusText}`);
+        throw new Error(`Error evaluando: ${resp.statusText}`);
       }
 
       const data = await resp.json();
-      console.log("Server response:", data);
+      console.log("Feedback de Ollama:", data);
       
-      setTranscript(data.transcription);
-      
-      // Si hay feedback, mostrarlo
-      if (data.feedback) {
-        setFeedback(data.feedback);
-        setShowFeedbackModal(true);
-      } else {
-        setError("No se pudo obtener feedback del servidor");
-      }
-
-      return data.transcription;
+      setFeedback(data);
+      setShowFeedbackModal(true);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Error desconocido";
       setError(errorMsg);
-      console.error("Error processing audio:", err);
+      console.error("Error evaluando con Ollama:", err);
     } finally {
       setIsProcessing(false);
     }
@@ -85,8 +134,39 @@ export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string
     <div className="p-4">
       <h2 className="text-xl font-bold mb-2">Recitar Temario</h2>
       <p className="text-sm text-muted-foreground mb-4">
-        Graba tu explicación del temario y recibe feedback instantáneo con IA
+        Habla y explica el temario - la IA transcribirá y evaluará tu explicación en tiempo real
       </p>
+
+      {/* Selector de idioma */}
+      <div className="mb-4 flex items-center gap-4">
+        <label className="text-sm font-medium">Idioma de reconocimiento:</label>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={language === 'mixed' ? 'default' : 'outline'}
+            onClick={() => setLanguage('mixed')}
+            disabled={recording}
+          >
+            🌍 Mixto (ES+EN)
+          </Button>
+          <Button
+            size="sm"
+            variant={language === 'es-ES' ? 'default' : 'outline'}
+            onClick={() => setLanguage('es-ES')}
+            disabled={recording}
+          >
+            🇪🇸 Español
+          </Button>
+          <Button
+            size="sm"
+            variant={language === 'en-US' ? 'default' : 'outline'}
+            onClick={() => setLanguage('en-US')}
+            disabled={recording}
+          >
+            🇬🇧 English
+          </Button>
+        </div>
+      </div>
 
       <div className="flex gap-3">
         {!recording ? (
@@ -94,14 +174,23 @@ export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string
             onClick={startRecording} 
             disabled={isProcessing || !expectedAnswer}
           >
-            🎙️ Empezar a grabar
+            🎙️ Empezar a hablar
           </Button>
         ) : (
           <Button variant="destructive" onClick={stopRecording}>
-            ⏹️ Detener grabación
+            ⏹️ Detener y evaluar
           </Button>
         )}
       </div>
+
+      {recording && (
+        <div className="mt-4 p-4 bg-green-50 dark:bg-green-950 rounded-lg animate-pulse">
+          <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+            Escuchando... habla ahora
+          </p>
+        </div>
+      )}
 
       {!expectedAnswer && (
         <p className="mt-4 text-sm text-yellow-600 dark:text-yellow-500">

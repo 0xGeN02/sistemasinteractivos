@@ -36,46 +36,59 @@ export default function App() {
 
   const currentChat = chats.find((c) => c.id === currentChatId);
 
-  // Cargar chats de localStorage al montar
-  useEffect(() => {
-    const savedChats = localStorage.getItem("studyai_chats");
-    if (savedChats) {
-      try {
-        setChats(JSON.parse(savedChats));
-      } catch (error) {
-        console.error("Error loading chats from localStorage:", error);
-      }
-    }
-  }, []);
-
-  // Guardar chats en localStorage cuando cambien
-  useEffect(() => {
-    localStorage.setItem("studyai_chats", JSON.stringify(chats));
-  }, [chats]);
-
   const handleCreateChat = (type: "study" | "practice") => {
     setNewChatType(type);
     setNewChatTitle("");
     setShowNewChatDialog(true);
   };
 
-  const handleConfirmNewChat = () => {
+  const handleConfirmNewChat = async () => {
     if (!newChatTitle.trim()) return;
 
-    const chat: Chat = {
-      id: Date.now().toString(),
-      title: newChatTitle,
-      type: newChatType,
-      createdAt: new Date().toISOString(),
-      materials: [],
-    };
+    const fallbackId = Date.now().toString();
 
-    setChats([chat, ...chats]);
-    setCurrentChatId(chat.id);
-    setCurrentMaterial("");
-    setMaterialAdded(false);
-    setShowNewChatDialog(false);
-    setNewChatTitle("");
+    try {
+      const resp = await fetch(`/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newChatTitle }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(`Failed to create chat: ${resp.status} ${resp.statusText} ${text}`);
+      }
+
+      const created = await resp.json();
+
+      const chat: Chat = {
+        id: created.id || fallbackId,
+        title: created.title || newChatTitle,
+        type: newChatType,
+        createdAt: created.createdAt || new Date().toISOString(),
+        materials: created.materials || [],
+      };
+
+      setChats([chat, ...chats]);
+      setCurrentChatId(chat.id);
+    } catch (err) {
+      console.error("Error creating chat on backend, creating locally instead:", err);
+      const chat: Chat = {
+        id: fallbackId,
+        title: newChatTitle,
+        type: newChatType,
+        createdAt: new Date().toISOString(),
+        materials: [],
+      };
+      setChats([chat, ...chats]);
+      setCurrentChatId(chat.id);
+      alert("No se pudo crear el chat en el backend. Se creó localmente.");
+    } finally {
+      setCurrentMaterial("");
+      setMaterialAdded(false);
+      setShowNewChatDialog(false);
+      setNewChatTitle("");
+    }
   };
 
   const handleDeleteChat = (chatId: string) => {
@@ -129,7 +142,7 @@ export default function App() {
 
   const uploadTextMaterial = async (chatId: string, content: string, name?: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/chats/${chatId}/materials`, {
+      const response = await fetch(`/api/chats/${chatId}/materials`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -139,8 +152,11 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to upload material");
-      
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`Failed to upload material: ${response.status} ${response.statusText} ${text}`);
+      }
+
       const material = await response.json();
       
       // Actualizar el chat con el nuevo material usando callback
@@ -180,14 +196,17 @@ export default function App() {
         formData.append("file", file);
 
         const response = await fetch(
-          `http://localhost:3001/api/chats/${chatId}/upload`,
+          `/api/chats/${chatId}/upload`,
           {
             method: "POST",
             body: formData,
           }
         );
 
-        if (!response.ok) throw new Error(`Failed to upload ${file.name}`);
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new Error(`Failed to upload ${file.name}: ${response.status} ${response.statusText} ${text}`);
+        }
 
         const material = await response.json();
         
@@ -228,7 +247,8 @@ export default function App() {
       });
     } catch (error) {
       console.error("Error uploading PDF files:", error);
-      alert("Error al subir los archivos PDF");
+      const msg = error instanceof Error ? error.message : String(error);
+      alert(`Error al subir los archivos PDF: ${msg}`);
     }
   };
 
@@ -296,7 +316,7 @@ export default function App() {
                       variant="ghost"
                       size="sm"
                       className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => {
+                      onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
                         handleDeleteChat(chat.id);
                       }}

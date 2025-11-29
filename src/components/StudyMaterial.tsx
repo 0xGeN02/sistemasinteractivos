@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, Plus, Trash2, File, Eye, X, CheckCircle } from "lucide-react";
+import { Upload, Plus, Trash2, File as FileIcon, Eye, X, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
@@ -181,7 +181,7 @@ export function StudyMaterial({ onMaterialSubmit, onPdfUpload }: StudyMaterialPr
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <File className="h-5 w-5" />
+            <FileIcon className="h-5 w-5" />
             <span>Cargar PDFs</span>
           </CardTitle>
           <CardDescription>
@@ -317,7 +317,7 @@ export function StudyMaterial({ onMaterialSubmit, onPdfUpload }: StudyMaterialPr
                 <div key={source.id} className="flex items-center justify-between p-3 bg-white rounded border">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
-                      <File className="h-4 w-4 text-muted-foreground" />
+                      <FileIcon className="h-4 w-4 text-muted-foreground" />
                       <p className="text-sm font-medium">{source.name}</p>
                       <Badge variant={source.type === "pdf" ? "default" : "secondary"} className="text-xs">
                         {source.type === "pdf" ? "PDF" : "Texto"}

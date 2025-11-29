@@ -7,6 +7,8 @@ import dotenv from "dotenv";
 import { randomUUID } from "crypto";
 import multer from "multer";
 
+import reciteRoutes from "./reciteRoutes";
+
 dotenv.config();
 
 const pool = new Pool({
@@ -20,6 +22,7 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use("/api/recite", reciteRoutes);
 
 // Configurar multer para upload de archivos
 const upload = multer({
@@ -457,4 +460,37 @@ process.on("SIGINT", async () => {
   console.log("\nShutting down gracefully...");
   await pool.end();
   process.exit(0);
+});
+
+// Middleware para recibir audio
+const audioUpload = multer({ storage: multer.memoryStorage() });
+
+// Crear carpeta de audios si no existe
+const audioDir = path.join(process.cwd(), "data", "audio");
+fs.mkdir(audioDir, { recursive: true }).catch(console.error);
+
+// Endpoint /whisper dentro del server.ts
+app.post("/whisper", audioUpload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No audio file provided" });
+    }
+
+    // Crear nombre único de archivo
+    const audioId = randomUUID();
+    const ext = path.extname(req.file.originalname) || ".webm";
+    const fileName = `${audioId}-${Date.now()}${ext}`;
+    const filePath = path.join(audioDir, fileName);
+
+    // Guardar archivo en disco
+    await fs.writeFile(filePath, req.file.buffer);
+
+    // Aquí puedes llamar a Whisper u Ollama para la transcripción real
+    const simulatedTranscription = "Este es el texto transcrito del audio";
+
+    res.json({ transcription: simulatedTranscription, filePath });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error processing audio" });
+  }
 });

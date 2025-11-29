@@ -10,6 +10,6 @@
     "resolveJsonModule": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
-  "include": ["src"],
+  "include": ["src", "whisperRoutes.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

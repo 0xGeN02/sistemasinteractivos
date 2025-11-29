@@ -4,7 +4,7 @@ import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { StudyMaterial } from "./components/StudyMaterial";
-import { ReciteStudy } from "./components/ReciteStudy";
+import ReciteStudy from "./components/ReciteStudy";
 import { PracticeTesting } from "./components/PracticeTesting";
 import { BookOpen, Brain, Plus, Trash2, X } from "lucide-react";
 
@@ -428,7 +428,7 @@ export default function App() {
                               onPdfUpload={currentChatId ? (files) => uploadPdfFiles(currentChatId, files) : undefined}
                             />
                           </div>
-                          <ReciteStudy material={currentMaterial} />
+                          <ReciteStudy expectedAnswer={currentMaterial} />
                         </div>
                       )}
                     </>

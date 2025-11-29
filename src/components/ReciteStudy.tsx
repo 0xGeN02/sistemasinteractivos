@@ -1,165 +1,127 @@
-import { useState } from "react";
-import { Mic, Send, RotateCcw, AlertCircle } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { useState, useRef } from "react";
 import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
-interface ReciteStudyProps {
-  material: string;
-}
+export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string }) {
+  const [recording, setRecording] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [feedback, setFeedback] = useState<any>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
-interface EvaluationResult {
-  score: number;
-  feedback: string;
-  strengths: string[];
-  improvements: string[];
-}
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
 
-export function ReciteStudy({ material }: ReciteStudyProps) {
-  const [recitation, setRecitation] = useState("");
-  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mediaRecorder = new MediaRecorder(stream);
 
-  const evaluateRecitation = async () => {
-    if (!recitation.trim()) {
-      setError("Por favor, escribe tu respuesta antes de evaluar");
-      return;
-    }
+    mediaRecorderRef.current = mediaRecorder;
+    chunks.current = [];
 
-    setLoading(true);
-    setError("");
+    mediaRecorder.ondataavailable = (e) => chunks.current.push(e.data);
 
-    try {
-      const response = await fetch("http://localhost:11434/api/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama2",
-          prompt: `Eres un evaluador académico. Evalúa la siguiente recitación del estudiante comparándola con el temario proporcionado.
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(chunks.current, { type: "audio/webm" });
+      await sendAudioToWhisper(audioBlob);
+    };
 
-TEMARIO:
-${material}
-
-RECITACIÓN DEL ESTUDIANTE:
-${recitation}
-
-Por favor proporciona:
-1. Una puntuación de 0 a 100
-2. Feedback general
-3. Fortalezas (lista 3 puntos clave que hizo bien)
-4. Áreas de mejora (lista 3 puntos a mejorar)
-
-Formatea la respuesta como JSON válido con las claves: "score", "feedback", "strengths" (array), "improvements" (array)`,
-          stream: false,
-        }),
-      });
-
-      const data = await response.json();
-      const result = JSON.parse(data.response);
-      setEvaluation(result);
-    } catch (err) {
-      setError("Error al conectar con el modelo local. Asegúrate de que Ollama esté ejecutándose.");
-      console.error("Error:", err);
-    } finally {
-      setLoading(false);
-    }
+    mediaRecorder.start();
+    setRecording(true);
   };
 
-  const handleReset = () => {
-    setRecitation("");
-    setEvaluation(null);
-    setError("");
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+  };
+
+  const sendAudioToWhisper = async (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "recording.webm");
+
+    const resp = await fetch("http://localhost:3001/whisper", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Error sending audio: ${resp.statusText}`);
+    }
+
+    const data = await resp.json(); // <-- aquí ya no dará el error '<'
+    console.log("Transcription:", data.transcription);
+
+    // Puedes compararlo con expectedAnswer
+    return data.transcription;
+  };
+
+
+  const evaluateRecitation = async (text: string) => {
+    const response = await fetch("http://localhost:3001/api/recite/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recitedText: text,
+        expectedText: expectedAnswer
+      })
+    });
+
+    const data = await response.json();
+    setFeedback(data);
+    setShowFeedbackModal(true);
   };
 
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Mic className="h-5 w-5" />
-          <span>Recita el Temario</span>
-        </CardTitle>
-        <CardDescription>
-          Escribe o narra lo que recuerdes del temario para ser evaluado
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+    <div className="p-4">
+      <h2 className="text-xl font-bold mb-2">Recitar Temario</h2>
 
-        {!evaluation ? (
-          <div className="space-y-4">
-            <Textarea
-              placeholder="Recita aquí lo que recuerdas del temario..."
-              value={recitation}
-              onChange={(e) => setRecitation(e.target.value)}
-              className="min-h-48"
-              disabled={loading}
-            />
-            <Button 
-              onClick={evaluateRecitation}
-              disabled={loading || !recitation.trim()}
-              className="w-full"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {loading ? "Evaluando..." : "Evaluar Recitación"}
-            </Button>
-          </div>
+      <div className="flex gap-3">
+        {!recording ? (
+          <Button onClick={startRecording}>🎙️ Empezar a grabar</Button>
         ) : (
-          <div className="space-y-4">
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg text-center">
-              <p className="text-sm text-muted-foreground mb-2">Tu Puntuación</p>
-              <p className="text-4xl font-bold text-primary">{evaluation.score}/100</p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="font-semibold">Retroalimentación General</p>
-              <p className="text-sm text-muted-foreground">{evaluation.feedback}</p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="font-semibold">Fortalezas</p>
-              <ul className="space-y-1">
-                {evaluation.strengths.map((strength, idx) => (
-                  <li key={idx} className="text-sm flex items-start space-x-2">
-                    <Badge variant="secondary" className="mt-0.5">✓</Badge>
-                    <span>{strength}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <p className="font-semibold">Áreas de Mejora</p>
-              <ul className="space-y-1">
-                {evaluation.improvements.map((improvement, idx) => (
-                  <li key={idx} className="text-sm flex items-start space-x-2">
-                    <Badge variant="destructive" className="mt-0.5">!</Badge>
-                    <span>{improvement}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <Button 
-              onClick={handleReset}
-              variant="outline"
-              className="w-full"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Intentar de Nuevo
-            </Button>
-          </div>
+          <Button variant="destructive" onClick={stopRecording}>
+            ⏹️ Detener
+          </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {transcript && (
+        <p className="mt-4 text-sm opacity-70">
+          <strong>Transcripción:</strong> {transcript}
+        </p>
+      )}
+
+      {/* MODAL FEEDBACK */}
+      <Dialog open={showFeedbackModal} onOpenChange={setShowFeedbackModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resultado de tu recitación</DialogTitle>
+          </DialogHeader>
+
+          {feedback ? (
+            <div className="space-y-3">
+              <p><strong>Precisión:</strong> {feedback.accuracy}%</p>
+
+              <p><strong>Resumen:</strong> {feedback.summary}</p>
+
+              <p><strong>Partes faltantes:</strong></p>
+              <ul className="list-disc ml-5">
+                {feedback.missingParts?.map((p: string, i: number) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ul>
+
+              <p><strong>Partes incorrectas:</strong></p>
+              <ul className="list-disc ml-5">
+                {feedback.incorrectParts?.map((p: string, i: number) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p>Cargando análisis...</p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

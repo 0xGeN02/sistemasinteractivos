@@ -97,19 +97,21 @@ app.get("/api/chats", async (req: Request, res: Response) => {
 // Crear un nuevo chat
 app.post("/api/chats", async (req: Request, res: Response) => {
   try {
-    const { title } = req.body;
+    const { title, type } = req.body;
     const id = randomUUID();
     const now = new Date();
+    const chatType = type || "study";
 
     await query(
-      `INSERT INTO chat_sessions (id, title, "createdAt", "updatedAt") 
-       VALUES ($1, $2, $3, $4)`,
-      [id, title || `Chat ${now.toLocaleDateString()}`, now, now]
+      `INSERT INTO chat_sessions (id, title, type, "createdAt", "updatedAt") 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, title || `Chat ${now.toLocaleDateString()}`, chatType, now, now]
     );
 
     const chat = {
       id,
       title: title || `Chat ${now.toLocaleDateString()}`,
+      type: chatType,
       createdAt: now,
       updatedAt: now,
       materials: [],
@@ -217,7 +219,7 @@ app.delete("/api/chats/:id", async (req: Request, res: Response) => {
       [id]
     );
 
-    // Eliminar archivos del sistema de archivos
+    // Eliminar archivos individuales del sistema de archivos
     for (const material of result.rows) {
       try {
         await fs.unlink(material.filePath);
@@ -226,7 +228,16 @@ app.delete("/api/chats/:id", async (req: Request, res: Response) => {
       }
     }
 
-    // Eliminar chat (los materiales se eliminarán en cascada)
+    // Eliminar carpeta completa del chat si existe
+    const chatFolder = path.join(storageDir, id);
+    try {
+      await fs.rm(chatFolder, { recursive: true, force: true });
+      console.log(`Deleted chat folder: ${chatFolder}`);
+    } catch (err) {
+      console.error(`Error deleting chat folder: ${chatFolder}`, err);
+    }
+
+    // Eliminar chat de la base de datos (los materiales se eliminarán en cascada)
     await query(`DELETE FROM chat_sessions WHERE id = $1`, [id]);
 
     res.json({ message: "Chat deleted successfully" });
@@ -476,6 +487,12 @@ app.post("/whisper", audioUpload.single("audio"), async (req, res) => {
       return res.status(400).json({ error: "No audio file provided" });
     }
 
+    // Campo opcional: expectedText puede venir en FormData
+    const expectedText =
+      (req.body && (req.body.expectedText || req.body.expected_text)) ||
+      req.query.expectedText ||
+      undefined;
+
     // Crear nombre único de archivo
     const audioId = randomUUID();
     const ext = path.extname(req.file.originalname) || ".webm";
@@ -485,10 +502,97 @@ app.post("/whisper", audioUpload.single("audio"), async (req, res) => {
     // Guardar archivo en disco
     await fs.writeFile(filePath, req.file.buffer);
 
-    // Aquí puedes llamar a Whisper u Ollama para la transcripción real
-    const simulatedTranscription = "Este es el texto transcrito del audio";
+    // 1) Transcripción del audio
+    let transcription = "";
 
-    res.json({ transcription: simulatedTranscription, filePath });
+    // Intentar usar OpenAI Whisper si existe API key
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const FormData = require("form-data");
+        const form = new FormData();
+        form.append("file", req.file.buffer, fileName);
+        form.append("model", "whisper-1");
+
+        const response = await fetch(
+          "https://api.openai.com/v1/audio/transcriptions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            },
+            body: form,
+          }
+        );
+
+        const data = await response.json();
+        transcription = data?.text || data?.transcription || "";
+      } catch (err) {
+        console.error("OpenAI Whisper error:", err);
+      }
+    }
+
+    // Si no hay OpenAI o falló, intentar con servicio local de Whisper
+    if (!transcription && process.env.LOCAL_WHISPER_URL) {
+      try {
+        const FormData = require("form-data");
+        const form = new FormData();
+        form.append("audio", req.file.buffer, fileName);
+
+        const response = await fetch(process.env.LOCAL_WHISPER_URL, {
+          method: "POST",
+          body: form,
+        });
+        const data = await response.json();
+        transcription = data?.transcription || data?.text || "";
+      } catch (err) {
+        console.error("Local Whisper error:", err);
+      }
+    }
+
+    // Fallback: transcripción simulada
+    if (!transcription) {
+      transcription =
+        "[Transcripción simulada del audio - configura OPENAI_API_KEY o LOCAL_WHISPER_URL para transcripción real]";
+      console.warn(
+        "Using simulated transcription - no whisper service configured"
+      );
+    }
+
+    // 2) Si hay expectedText, evaluar con Ollama
+    if (expectedText) {
+      try {
+        const evalResponse = await fetch(
+          `http://localhost:${port}/api/recite/evaluate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recitedText: transcription,
+              expectedText,
+            }),
+          }
+        );
+
+        if (!evalResponse.ok) {
+          const errorText = await evalResponse.text().catch(() => "");
+          console.error(
+            "Evaluation endpoint error:",
+            evalResponse.status,
+            errorText
+          );
+          return res.status(500).json({ error: "Error evaluating recitation" });
+        }
+
+        const feedback = await evalResponse.json();
+        return res.json({ transcription, feedback, filePath });
+      } catch (err) {
+        console.error("Error calling evaluation endpoint:", err);
+        return res.status(500).json({ error: "Error evaluating recitation" });
+      }
+    }
+
+    // 3) Si no hay expectedText, devolver solo la transcripción
+    res.json({ transcription, filePath });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error processing audio" });

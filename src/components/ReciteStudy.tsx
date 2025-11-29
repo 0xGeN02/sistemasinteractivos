@@ -37,6 +37,11 @@ export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string
   const sendAudioToWhisper = async (audioBlob: Blob) => {
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
+    
+    // Enviar el material esperado para comparación inmediata
+    if (expectedAnswer) {
+      formData.append("expectedText", expectedAnswer);
+    }
 
     const resp = await fetch("http://localhost:3001/whisper", {
       method: "POST",
@@ -47,27 +52,19 @@ export default function ReciteStudy({ expectedAnswer }: { expectedAnswer: string
       throw new Error(`Error sending audio: ${resp.statusText}`);
     }
 
-    const data = await resp.json(); // <-- aquí ya no dará el error '<'
+    const data = await resp.json();
     console.log("Transcription:", data.transcription);
+    
+    // Si hay feedback, mostrarlo
+    if (data.feedback) {
+      setTranscript(data.transcription);
+      setFeedback(data.feedback);
+      setShowFeedbackModal(true);
+    } else {
+      setTranscript(data.transcription);
+    }
 
-    // Puedes compararlo con expectedAnswer
     return data.transcription;
-  };
-
-
-  const evaluateRecitation = async (text: string) => {
-    const response = await fetch("http://localhost:3001/api/recite/evaluate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recitedText: text,
-        expectedText: expectedAnswer
-      })
-    });
-
-    const data = await response.json();
-    setFeedback(data);
-    setShowFeedbackModal(true);
   };
 
   return (

@@ -33,8 +33,39 @@ export default function App() {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [newChatTitle, setNewChatTitle] = useState("");
   const [newChatType, setNewChatType] = useState<"study" | "practice">("study");
+  const [loading, setLoading] = useState(true);
 
   const currentChat = chats.find((c) => c.id === currentChatId);
+
+  // Cargar chats existentes al iniciar
+  useEffect(() => {
+    const loadChats = async () => {
+      try {
+        const response = await fetch("/api/chats");
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Chats cargados desde DB:", data);
+          
+          // Mapear los chats para asegurar que tienen el formato correcto
+          const mappedChats: Chat[] = data.map((chat: any) => ({
+            id: chat.id,
+            title: chat.title,
+            type: chat.type || "study", // Mantener el tipo original del backend
+            createdAt: chat.createdAt,
+            materials: chat.materials || [],
+          }));
+          
+          setChats(mappedChats);
+        }
+      } catch (error) {
+        console.error("Error loading chats:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChats();
+  }, []);
 
   const handleCreateChat = (type: "study" | "practice") => {
     setNewChatType(type);
@@ -51,7 +82,7 @@ export default function App() {
       const resp = await fetch(`/api/chats`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newChatTitle }),
+        body: JSON.stringify({ title: newChatTitle, type: newChatType }),
       });
 
       if (!resp.ok) {
@@ -91,39 +122,108 @@ export default function App() {
     }
   };
 
-  const handleDeleteChat = (chatId: string) => {
-    setChats(chats.filter((c) => c.id !== chatId));
-    if (currentChatId === chatId) {
-      setCurrentChatId(null);
-      setCurrentMaterial("");
-      setMaterialAdded(false);
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      const response = await fetch(`/api/chats/${chatId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete chat: ${response.statusText}`);
+      }
+
+      // Actualizar estado local después de eliminar en el servidor
+      setChats(chats.filter((c) => c.id !== chatId));
+      if (currentChatId === chatId) {
+        setCurrentChatId(null);
+        setCurrentMaterial("");
+        setMaterialAdded(false);
+      }
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      alert("Error al eliminar el chat. Por favor, intenta de nuevo.");
     }
   };
 
-  const handleSelectChat = (chatId: string) => {
+  const handleSelectChat = async (chatId: string) => {
     setCurrentChatId(chatId);
     const chat = chats.find((c) => c.id === chatId);
     
-    // Si el chat tiene materiales, cargar el último
+    // Si el chat tiene materiales, combinar todo el contenido
     if (chat?.materials && chat.materials.length > 0) {
-      setCurrentMaterial(chat.materials[chat.materials.length - 1].content);
-      setMaterialAdded(true);
+      try {
+        // Cargar contenido completo de todos los materiales
+        const materialContents = await Promise.all(
+          chat.materials.map(async (material) => {
+            // Si el contenido parece truncado o es un placeholder, cargar el archivo completo
+            if (material.content.includes("[File:") || material.content.length < 100) {
+              try {
+                const response = await fetch(`/api/materials/${material.id}/content`);
+                if (response.ok) {
+                  const data = await response.json();
+                  return data.content;
+                }
+              } catch (err) {
+                console.error(`Error loading material ${material.id}:`, err);
+              }
+            }
+            return material.content;
+          })
+        );
+        
+        // Combinar todos los materiales
+        const combined = materialContents.join("\n\n---\n\n");
+        setCurrentMaterial(combined);
+        setMaterialAdded(true);
+      } catch (error) {
+        console.error("Error loading materials:", error);
+        // Fallback: usar el contenido que tenemos
+        const combined = chat.materials.map(m => m.content).join("\n\n---\n\n");
+        setCurrentMaterial(combined);
+        setMaterialAdded(true);
+      }
     } else {
       setCurrentMaterial("");
       setMaterialAdded(false);
     }
   };
 
-  const handleDeleteMaterial = (materialId: string) => {
-    setChats(chats.map((chat) => {
-      if (chat.id === currentChatId) {
-        return {
-          ...chat,
-          materials: chat.materials.filter((m) => m.id !== materialId),
-        };
+  const handleDeleteMaterial = async (materialId: string) => {
+    try {
+      const response = await fetch(`/api/materials/${materialId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete material: ${response.statusText}`);
       }
-      return chat;
-    }));
+
+      // Actualizar estado local después de eliminar en el servidor
+      setChats(chats.map((chat) => {
+        if (chat.id === currentChatId) {
+          const updatedMaterials = chat.materials.filter((m) => m.id !== materialId);
+          
+          // Si ya no hay materiales, limpiar el material actual
+          if (updatedMaterials.length === 0) {
+            setCurrentMaterial("");
+            setMaterialAdded(false);
+          } else {
+            // Recombinar los materiales restantes
+            const combined = updatedMaterials.map(m => m.content).join("\n\n---\n\n");
+            setCurrentMaterial(combined);
+          }
+          
+          return {
+            ...chat,
+            materials: updatedMaterials,
+          };
+        }
+        return chat;
+      }));
+    } catch (error) {
+      console.error("Error deleting material:", error);
+      alert("Error al eliminar el material. Por favor, intenta de nuevo.");
+    }
   };
 
   const handleMaterialSubmit = (material: string, fileName?: string) => {
@@ -316,9 +416,9 @@ export default function App() {
                       variant="ghost"
                       size="sm"
                       className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-                      onClick={(e: React.MouseEvent) => {
+                      onClick={async (e: React.MouseEvent) => {
                         e.stopPropagation();
-                        handleDeleteChat(chat.id);
+                        await handleDeleteChat(chat.id);
                       }}
                     >
                       <Trash2 className="h-3 w-3" />

@@ -7,8 +7,9 @@ import path from "path";
 const router = express.Router();
 
 // Configuración del modelo de Ollama
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1";
-const VISION_MODEL = process.env.VISION_MODEL || "llava"; // Modelo con capacidad de visión
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
+const VISION_MODEL = process.env.VISION_MODEL || "llava:latest";
+const ENABLE_VIDEO_ANALYSIS = false; // Deshabilitado temporalmente - requiere configuración adicional
 
 // Configurar multer para manejar archivos de video
 const upload = multer({
@@ -203,5 +204,176 @@ Responde SOLO con el JSON:`;
     res.status(500).json({ error: "AI analysis failed" });
   }
 });
+
+// Endpoint para evaluar desde archivo de audio (modo de grabación local)
+router.post(
+  "/evaluate-audio",
+  upload.fields([
+    { name: "audio", maxCount: 1 },
+    { name: "video", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { expectedText, duration } = req.body;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const audioFile = files?.audio?.[0];
+      const videoFile = files?.video?.[0];
+
+      if (!audioFile || !expectedText) {
+        return res
+          .status(400)
+          .json({ error: "Missing audio file or expectedText" });
+      }
+
+      console.log(`Processing audio file: ${audioFile.filename}`);
+      console.log(`Duration: ${duration}s`);
+
+      // Por ahora, usamos un mensaje indicando que se grabó correctamente
+      // pero necesitaremos Whisper u otro servicio para transcribir
+      const transcribedText = `[Audio grabado: ${audioFile.size} bytes, duración: ${duration}s]\n\nNota: La transcripción automática desde archivo de audio requiere configurar Whisper u otro servicio de transcripción. Por ahora, evaluaremos basándonos en la duración y contexto.`;
+
+      console.log(`Using Ollama model: ${OLLAMA_MODEL}`);
+
+      // Crear un prompt que considere que tenemos el audio pero no la transcripción exacta
+      const prompt = `
+Eres un profesor evaluando una presentación oral de un estudiante.
+
+CONTEXTO: El estudiante ha realizado una presentación oral que duró ${duration} segundos sobre el siguiente material de estudio.
+
+IMPORTANTE: Como no tenemos la transcripción exacta de lo que dijo, proporciona una evaluación general basada en:
+1. Si la duración es apropiada para el material (muy corto = probablemente incompleto, muy largo = posiblemente con relleno)
+2. Consejos generales sobre qué debería haber cubierto basándose en el material
+3. Sugerencias para mejorar futuras presentaciones
+
+REGLAS:
+- Devuelve SOLO un objeto JSON válido, sin texto adicional
+- Sé constructivo y educativo
+- La precisión debe ser moderada (60-75) ya que no tenemos la transcripción exacta
+
+FORMATO DE RESPUESTA (JSON):
+{
+  "accuracy": <número entre 60 y 75>,
+  "missingParts": ["probablemente debiste cubrir X", "asegúrate de mencionar Y"],
+  "incorrectParts": [],
+  "summary": "Evaluación general considerando la duración y el material. Menciona que para una evaluación más precisa, se necesita transcripción.",
+  "note": "Esta es una evaluación aproximada sin transcripción de audio"
+}
+
+MATERIAL DE ESTUDIO:
+${expectedText}
+
+DURACIÓN DE LA PRESENTACIÓN: ${duration} segundos
+
+Responde SOLO con el JSON:`;
+
+      const response = await ollama.chat({
+        model: OLLAMA_MODEL,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const raw = response.message.content;
+      console.log("Ollama raw response:", raw);
+
+      let json;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        try {
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            json = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error("No JSON found in response");
+          }
+        } catch (error) {
+          console.error("Failed to parse Ollama response:", raw);
+          json = {
+            accuracy: 65,
+            missingParts: ["Evaluación basada en duración solamente"],
+            incorrectParts: [],
+            summary: `Has completado una presentación de ${duration} segundos. Para una evaluación precisa, necesitaríamos transcribir el audio.`,
+            note: "Evaluación aproximada sin transcripción",
+          };
+        }
+      }
+
+      // Si hay video, realizar análisis de lenguaje corporal
+      let videoAnalysis = null;
+      if (videoFile && ENABLE_VIDEO_ANALYSIS) {
+        try {
+          console.log("Analizando video con modelo de visión...");
+          const videoPath = path.join(process.cwd(), videoFile.path);
+          const videoBuffer = fs.readFileSync(videoPath);
+          const videoBase64 = videoBuffer.toString("base64");
+
+          const videoPrompt = `
+Analiza este video de una presentación y evalúa el lenguaje corporal:
+
+FORMATO DE RESPUESTA (JSON):
+{
+  "confidence": {
+    "score": <número 1-10>,
+    "description": "descripción breve"
+  },
+  "nervousness": {
+    "score": <número 1-10>,
+    "description": "descripción breve"
+  },
+  "posture": "descripción de la postura",
+  "eyeContact": "evaluación del contacto visual",
+  "facialExpressions": "descripción de las expresiones",
+  "suggestions": ["sugerencia 1", "sugerencia 2", "sugerencia 3"]
+}
+
+Responde SOLO con el JSON:`;
+
+          const visionResponse = await ollama.chat({
+            model: VISION_MODEL,
+            messages: [
+              {
+                role: "user",
+                content: videoPrompt,
+                images: [videoBase64],
+              },
+            ],
+          });
+
+          const videoRaw = visionResponse.message.content;
+          try {
+            videoAnalysis = JSON.parse(videoRaw);
+          } catch {
+            const jsonMatch = videoRaw.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              videoAnalysis = JSON.parse(jsonMatch[0]);
+            }
+          }
+
+          fs.unlinkSync(videoPath);
+        } catch (videoError) {
+          console.error("Error analizando video:", videoError);
+        }
+      }
+
+      // Limpiar archivo de audio temporal
+      if (audioFile) {
+        const audioPath = path.join(process.cwd(), audioFile.path);
+        fs.unlinkSync(audioPath);
+      }
+
+      const finalResponse = {
+        ...json,
+        transcribedText,
+        videoAnalysis,
+        duration: parseInt(duration) || 0,
+        audioProcessed: true,
+      };
+
+      res.json(finalResponse);
+    } catch (error) {
+      console.error("Audio evaluation error:", error);
+      res.status(500).json({ error: "Audio analysis failed" });
+    }
+  }
+);
 
 export default router;

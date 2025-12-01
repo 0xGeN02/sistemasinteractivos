@@ -6,8 +6,8 @@ import path from "path";
 import dotenv from "dotenv";
 import { randomUUID } from "crypto";
 import multer from "multer";
-
 import reciteRoutes from "./reciteRoutes";
+import quizRoutes from "./quizRoutes";
 
 dotenv.config();
 
@@ -16,13 +16,14 @@ const pool = new Pool({
 });
 
 const app: Express = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3002;
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/api/recite", reciteRoutes);
+app.use("/api/quiz", quizRoutes);
 
 // Configurar multer para upload de archivos
 const upload = multer({
@@ -287,6 +288,28 @@ app.post(
       // Guardar archivo
       await fs.writeFile(filePath, req.file.buffer);
 
+      // Extraer texto si es PDF
+      let extractedText = `[File: ${req.file.originalname}]`;
+      if (req.file.mimetype.includes("pdf")) {
+        try {
+          console.log("Extracting text from PDF...");
+          const dataBuffer = req.file.buffer;
+          // @ts-ignore - pdf-parse has weird ESM exports
+          const pdf = await import("pdf-parse");
+          // @ts-ignore
+          const pdfData = await pdf(dataBuffer);
+          extractedText =
+            pdfData.text ||
+            `[PDF file: ${req.file.originalname} - No text could be extracted]`;
+          console.log(
+            `Extracted ${pdfData.text?.length || 0} characters from PDF`
+          );
+        } catch (pdfError) {
+          console.error("Error extracting PDF text:", pdfError);
+          extractedText = `[PDF file: ${req.file.originalname} - Error extracting text]`;
+        }
+      }
+
       // Guardar en base de datos
       const now = new Date();
 
@@ -299,7 +322,7 @@ app.post(
           req.file.originalname,
           req.file.mimetype.includes("pdf") ? "pdf" : "text",
           filePath,
-          `[File: ${req.file.originalname}]`, // Placeholder para preview
+          extractedText.substring(0, 5000), // Guardar preview (primeros 5000 caracteres)
           now,
           now,
         ]

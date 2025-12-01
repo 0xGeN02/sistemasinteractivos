@@ -52,6 +52,13 @@ export function QuizStudy({ material }: QuizStudyProps) {
     setLoading(true);
     setError("");
     setExamType(type);
+    
+    // Validar que el material no sea un placeholder de PDF
+    if (!material || material.includes('[File:') || material.length < 50) {
+      setError("No hay suficiente material de texto para generar el quiz. Si subiste un PDF, por favor copia y pega el contenido del material primero.");
+      setLoading(false);
+      return;
+    }
 
     try {
       let prompt = "";
@@ -131,43 +138,33 @@ Para preguntas de REDACCIÓN:
 ALTERNA los tipos de preguntas. Solo devuelve el JSON válido.`;
       }
 
-      const response = await fetch("http://localhost:11434/api/generate", {
+      const response = await fetch("/api/quiz/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama2",
-          prompt,
-          stream: false,
+          material: material,
+          numQuestions: 10,
+          difficulty: "medium",
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Error en la petición: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error en la petición: ${response.statusText}`);
       }
 
       const data = await response.json();
       
-      // Intentar parsear el JSON, limpiando posibles textos adicionales
-      let jsonText = data.response.trim();
-      const jsonStart = jsonText.indexOf('[');
-      const jsonEnd = jsonText.lastIndexOf(']') + 1;
-      
-      if (jsonStart !== -1 && jsonEnd > jsonStart) {
-        jsonText = jsonText.substring(jsonStart, jsonEnd);
-      }
-      
-      const parsedQuestions = JSON.parse(jsonText);
-      
       // Validar que tenemos el formato correcto
-      if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
+      if (!Array.isArray(data.questions) || data.questions.length === 0) {
         throw new Error("El formato de las preguntas no es válido");
       }
 
-      setQuestions(parsedQuestions);
+      setQuestions(data.questions);
       setQuizStarted(true);
-      console.log("Preguntas generadas:", parsedQuestions);
+      console.log("Preguntas generadas:", data.questions);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Error desconocido";
       setError(`Error al generar el examen: ${errorMsg}. Asegúrate de que Ollama esté ejecutándose.`);
@@ -212,48 +209,23 @@ ALTERNA los tipos de preguntas. Solo devuelve el JSON válido.`;
       setLoading(true);
       try {
         // Evaluar la respuesta con IA
-        const response = await fetch("http://localhost:11434/api/generate", {
+        const response = await fetch("/api/quiz/evaluate", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "llama2",
-            prompt: `Eres un evaluador académico. Evalúa la respuesta del estudiante.
-
-PREGUNTA:
-${currentQuestion.question}
-
-RESPUESTA ESPERADA:
-${currentQuestion.expectedAnswer}
-
-RESPUESTA DEL ESTUDIANTE:
-${textAnswer}
-
-Evalúa si la respuesta es correcta considerando:
-1. Incluye los conceptos clave
-2. Es precisa y relevante
-3. Demuestra comprensión del tema
-
-Responde en formato JSON con:
-- "isCorrect": true/false (true si es al menos 70% correcta)
-- "feedback": comentario específico sobre la respuesta (qué está bien, qué falta)
-
-Solo JSON, sin texto adicional.`,
-            stream: false,
+            question: currentQuestion.question,
+            expectedAnswer: currentQuestion.expectedAnswer,
+            userAnswer: textAnswer,
           }),
         });
 
-        const data = await response.json();
-        let jsonText = data.response.trim();
-        const jsonStart = jsonText.indexOf('{');
-        const jsonEnd = jsonText.lastIndexOf('}') + 1;
-        
-        if (jsonStart !== -1 && jsonEnd > jsonStart) {
-          jsonText = jsonText.substring(jsonStart, jsonEnd);
+        if (!response.ok) {
+          throw new Error(`Error evaluando: ${response.statusText}`);
         }
-        
-        const evaluation = JSON.parse(jsonText);
+
+        const evaluation = await response.json();
 
         const result: QuizResult = {
           question: currentQuestion.question,
